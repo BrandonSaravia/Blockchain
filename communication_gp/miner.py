@@ -32,11 +32,11 @@ def valid_proof(block_string, proof):
     guess = f'{block_string}{proof}'.encode()
     guess_hash = hashlib.sha256(guess).hexdigest()
     # TODO: Change back to six zeroes
-    return guess_hash[:3] == "000"
+    return guess_hash[:4] == "0000"
 
 
 if __name__ == '__main__':
-    # What node are we interacting with?
+    # What node are we interacting with? 
     if len(sys.argv) > 1:
         node = sys.argv[1]
     else:
@@ -53,8 +53,7 @@ if __name__ == '__main__':
         print(f"found proof and submitting it: {new_proof}")
         # TODO: When found, POST it to the server {"proof": new_proof}
         post_data = {'proof': new_proof}
-        r = requests.post(url=node + '/mine', json=post_data)
-        data = r.json()
+        data = requests.post(url=node + '/mine', json=post_data).json()
         if data['message'] != 'Proof was invalid or too late':
             coins_mined += 1 
         # TODO: We're going to have to research how to do a POST in Python

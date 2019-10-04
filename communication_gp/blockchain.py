@@ -7,6 +7,7 @@ from uuid import uuid4
 import sys
 
 from urllib.parse import urlparse
+import requests
 
 from flask import Flask, jsonify, request
 
@@ -79,7 +80,7 @@ class Blockchain(object):
 
     def register_node(self, node):
         parsed_url = urlparse(node)
-        self.nodes.add(parsed_url.netlock)
+        self.nodes.add(parsed_url.netloc)
 
     @staticmethod
     def hash(block):
@@ -105,6 +106,30 @@ class Blockchain(object):
         # hash to a string using hexadecimal characters, which is
         # easer to work with and understand.
         return hashlib.sha256(block_string).hexdigest()
+
+    def broadcast_new_block(self, block):
+        """
+        Alert neighbors that a new block has been mined and they should add it to their chain as well
+        """
+        
+        neighbors = self.nodes
+
+        post_data = {"block": block}
+
+        for node in neighbors:
+            response = request.post(f"http://{node}/block/new", json=post_data)
+
+            if response.status_code != 200:
+                pass
+
+    def add_block(self, block):
+        """
+        Add a validated recieved block to the end of the chain
+        """
+
+        self.current_transactions = []
+
+        self.chain.append(block)
 
     @property
     def last_block(self):
@@ -138,7 +163,7 @@ class Blockchain(object):
         guess = f'{block_string}{proof}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
         # TODO: Change back to six zeroes
-        return guess_hash[:3] == "000"
+        return guess_hash[:4] == "0000"
 
     def valid_chain(self, chain):
         """
@@ -219,6 +244,8 @@ def mine():
     previous_hash = blockchain.hash(blockchain.last_block)
     block = blockchain.new_block(submitted_proof, previous_hash)
 
+    blockchain.broadcast_new_block(block)
+
     # Send a response with the new block
     response = {
         'message': "New Block Forged",
@@ -276,9 +303,22 @@ def new_block():
     values = request.get_json()
 
     # Check that the required fields are in the POST'ed data
-    required = ['block']
-    if not all(k in values for k in required):
-        return 'Missing Values', 400
+    new_block = values['block']
+    
+    old_block = blockchain.last_block
+
+    if new_block['index'] == old_block['index'] + 1:
+        if new_block['previous_hash'] == blockchain.hash(old_block):
+            block_string = json.dumps(old_block, sort_keys=True).encode()
+            if blockchain.valid_proof(block_string, new_block['proof']):
+                blockchain.add_block(new_block)
+                return 'Block Accepted'
+            else:
+                pass
+        else:
+            pass
+    else:
+        pass
 
     # TODO: Verify that the sender is one of our peers
 
@@ -296,6 +336,7 @@ def register_nodes():
 
     values = request.get_json()
     nodes = values.get('nodes')
+    
     if nodes is None:
         return "Error: Please supply a valid list of nodes", 400
 
@@ -307,7 +348,6 @@ def register_nodes():
         'total_nodes': list(blockchain.nodes),
     }
     return jsonify(response), 201
-
 
 
 # TODO: Get rid of the previous if __main__ and use this so we can change
